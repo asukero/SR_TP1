@@ -68,22 +68,25 @@ public class Server {
     }
 
     private File readFile(Socket socket, long fileSize) throws IOException, ClassNotFoundException {
-        byte[] byteArray = new byte[1024];
-        InputStream is = socket.getInputStream();
+
+        DataInputStream dis = new DataInputStream(socket.getInputStream());
         FileOutputStream fos = new FileOutputStream("temp_file");
+        byte[] buffer = new byte[4096];
+
+        int filesize = (int)fileSize; // Send file size in separate msg
+        int read = 0;
+        int totalRead = 0;
+        int remaining = filesize;
+        while((read = dis.read(buffer, 0, Math.min(buffer.length, remaining))) > 0) {
+            totalRead += read;
+            remaining -= read;
+            System.out.println("read " + totalRead + " bytes.");
+            fos.write(buffer, 0, read);
+        }
+
         File fileReceived = new File("temp_file");
 
-        ByteStream.toFile(is,fileReceived);
-        /*int count;
-        try{
-            while((count=is.read(byteArray)) >= 0){
-                fos.write(byteArray, 0, count);
-            }
-        } catch (IOException ex){
-            System.out.println(ex.getMessage());
-        }
-        */
-
+        dis.close();
         System.out.println("File temp_file"
                 + " downloaded (" + fileSize + " bytes)");
 

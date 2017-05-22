@@ -93,17 +93,18 @@ public class Client {
 
     private String sendFile() throws IOException, ClassNotFoundException {
 
-        byte[] byteArray = new byte[(int) fileToSend.length()];
         FileInputStream fis = new FileInputStream(fileToSend);
-        BufferedInputStream bis = new BufferedInputStream(fis);
-        bis.read(byteArray, 0, byteArray.length);
-
         System.out.println("Sending file " + fileToSend.getName() + " to server...");
-        outServerStream.write(byteArray, 0, byteArray.length);
+        DataOutputStream dos = new DataOutputStream(outServerStream);
+        byte[] buffer = new byte[4096];
 
+        while (fis.read(buffer) > 0) {
+            dos.write(buffer);
+        }
+
+        fis.close();
+        dos.close();
         System.out.println("Done.");
-
-        outServerStream.flush();
 
         return getReturnMessage();
     }
