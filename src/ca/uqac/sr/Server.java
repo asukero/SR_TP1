@@ -1,6 +1,8 @@
 package ca.uqac.sr;
 
 import ca.uqac.sr.utils.DoSomething;
+import sun.misc.IOUtils;
+import sun.nio.ch.IOUtil;
 
 import java.io.*;
 import java.net.*;
@@ -41,6 +43,7 @@ public class Server {
                             File fileReceivede = readFile(socket, message.fileSize);
                             break;
                         default:
+                            break;
 
                     }
                     System.out.println(rMessage);
@@ -61,32 +64,31 @@ public class Server {
     private DoSomething readObject(Socket socket) throws IOException, ClassNotFoundException {
         ObjectInputStream is = new ObjectInputStream(socket.getInputStream());
         DoSomething object = (DoSomething) is.readObject();
-        is.close();
         return object;
     }
 
     private File readFile(Socket socket, long fileSize) throws IOException, ClassNotFoundException {
-        byte[] byteArray = new byte[(int) fileSize];
+        byte[] byteArray = new byte[1024];
         InputStream is = socket.getInputStream();
         FileOutputStream fos = new FileOutputStream("temp_file");
-        BufferedOutputStream bos = new BufferedOutputStream(fos);
-        int bytesRead = is.read(byteArray, 0, byteArray.length);
-        int current = bytesRead;
-
-        do {
-            bytesRead =
-                    is.read(byteArray, current, (byteArray.length - current));
-            if (bytesRead >= 0) current += bytesRead;
-        } while (bytesRead > -1);
-
-        bos.write(byteArray, 0, current);
-        bos.flush();
-        System.out.println("File temp_file"
-                + " downloaded (" + current + " bytes read)");
-
         File fileReceived = new File("temp_file");
+
+        ByteStream.toFile(is,fileReceived);
+        /*int count;
+        try{
+            while((count=is.read(byteArray)) >= 0){
+                fos.write(byteArray, 0, count);
+            }
+        } catch (IOException ex){
+            System.out.println(ex.getMessage());
+        }
+        */
+
+        System.out.println("File temp_file"
+                + " downloaded (" + fileSize + " bytes)");
+
+
         fos.close();
-        is.close();
         return fileReceived;
     }
 
