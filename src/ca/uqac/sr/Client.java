@@ -44,11 +44,11 @@ public class Client {
                     returnMessage = sendObject(number1, number2);
                     break;
                 case BYTE:
-                    sendMessage(new Message(sendType, number1, number2, fileToSend.length()));
+                    sendMessage(new Message(sendType, number1, number2, fileToSend.length(), fileToSend.getName()));
                     returnMessage = sendFile();
                     break;
                 case SOURCE:
-                    sendMessage(new Message(sendType, number1, number2, fileToSend.length()));
+                    sendMessage(new Message(sendType, number1, number2, fileToSend.length(), fileToSend.getName()));
                     returnMessage = sendFile();
                     break;
                 default:

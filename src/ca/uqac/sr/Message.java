@@ -14,11 +14,14 @@ public class Message implements Serializable{
 
     public long fileSize = -1;
 
-    public Message(SendType sendType, int number1, int number2, long fileSize) {
+    public String fileName = "";
+
+    public Message(SendType sendType, int number1, int number2, long fileSize, String fileName) {
         this.sendType = sendType;
         this.number1 = number1;
         this.number2 = number2;
         this.fileSize = fileSize;
+        this.fileName = fileName;
     }
 
     public Message(SendType sendType, int number1, int number2) {

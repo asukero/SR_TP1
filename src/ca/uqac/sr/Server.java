@@ -1,11 +1,24 @@
 package ca.uqac.sr;
 
 import ca.uqac.sr.utils.DoSomething;
+import com.sun.org.apache.bcel.internal.generic.TargetLostException;
 import sun.misc.IOUtils;
 import sun.nio.ch.IOUtil;
 
+import javax.tools.Diagnostic;
+import javax.tools.DiagnosticCollector;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.StandardJavaFileManager;
+import javax.tools.ToolProvider;
 import java.io.*;
+import java.lang.reflect.InvocationTargetException;
 import java.net.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
 
 
 /**
@@ -13,9 +26,10 @@ import java.net.*;
  */
 public class Server {
     private ServerSocket listener = null;
+    private ClassLoader classLoader;
 
     public Server(int port) throws IOException {
-        this.listener = new ServerSocket(9090);
+        this.listener = new ServerSocket(port);
     }
 
     public void startServer() throws IOException {
@@ -30,21 +44,33 @@ public class Server {
                     Message message = (Message) is.readObject();
 
                     String rMessage = null;
+                    DoSomething object = null;
                     switch (message.sendType) {
                         case OBJECT:
-                            DoSomething object = readObject(socket);
-                            object.compute();
-                            rMessage = "Compute sucess, result is " + object.getResult();
+                            object = readObject(socket);
+
                             break;
                         case SOURCE:
-                            File fileReceived = readFile(socket, message.fileSize);
+                            File fileReceived = readFile(socket, message);
+                            compileFile(fileReceived);
+                            classLoader = new URLClassLoader(new URL[]{new File("./classes").toURI().toURL()});
+                            object = loadFile("ca.uqac.sr.utils." + fileReceived.getName().substring(0, fileReceived.getName().lastIndexOf(".")), message);
                             break;
                         case BYTE:
-                            File fileReceivede = readFile(socket, message.fileSize);
+                            File fileReceivede = readFile(socket, message);
+                            classLoader = new URLClassLoader(new URL[]{fileReceivede.toURI().toURL()});
+                            object = loadFile("ca.uqac.sr.utils." + fileReceivede.getName().substring(0, fileReceivede.getName().lastIndexOf(".")), message);
                             break;
                         default:
                             break;
 
+                    }
+                    if(object != null){
+                        object.compute();
+                        rMessage = "Compute sucess, result is " + object.getResult();
+
+                    }else{
+                        rMessage = "Error during compute";
                     }
                     System.out.println(rMessage);
                     os.writeObject(rMessage);
@@ -67,13 +93,13 @@ public class Server {
         return object;
     }
 
-    private File readFile(Socket socket, long fileSize) throws IOException, ClassNotFoundException {
+    private File readFile(Socket socket, Message message) throws IOException, ClassNotFoundException {
 
         DataInputStream dis = new DataInputStream(socket.getInputStream());
-        FileOutputStream fos = new FileOutputStream("temp_file");
+        FileOutputStream fos = new FileOutputStream(message.fileName);
         byte[] buffer = new byte[4096];
 
-        int filesize = (int)fileSize; // Send file size in separate msg
+        int filesize = (int)message.fileSize; // Send file size in separate msg
         int read = 0;
         int totalRead = 0;
         int remaining = filesize;
@@ -84,15 +110,68 @@ public class Server {
             fos.write(buffer, 0, read);
         }
 
-        File fileReceived = new File("temp_file");
+        File fileReceived = new File(message.fileName);
 
         dis.close();
-        System.out.println("File temp_file"
-                + " downloaded (" + fileSize + " bytes)");
-
 
         fos.close();
         return fileReceived;
+    }
+
+    public void compileFile(File fileReceived){
+        //Récupération du compilateur Java
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<JavaFileObject>();
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, null, null);
+
+
+        //Configuration du classpath utilisé par le compilateur
+        List<String> optionList = new ArrayList<>();
+        optionList.add("-g");
+        optionList.add("-d");
+        optionList.add("././classes");
+
+        Iterable<? extends JavaFileObject> compilationUnit
+                = fileManager.getJavaFileObjects(fileReceived);
+        JavaCompiler.CompilationTask task = compiler.getTask(
+                null,
+                fileManager,
+                diagnostics,
+                optionList,
+                null,
+                compilationUnit);
+
+        //Compilation des fichiers java...
+        if (task.call()) {
+            System.out.println("File " + fileReceived.getPath() + " compiled successfully.");
+        } else {
+            for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics.getDiagnostics()) {
+                System.out.println("Erreur à la ligne" + diagnostic.getLineNumber() + " de " + diagnostic.getSource().toUri());
+            }
+        }
+
+        try {
+            fileManager.close();
+        } catch (IOException e) {
+            System.out.println("Erreur: Les fichiers sources ne se sont pas fermés correctement");
+        }
+    }
+
+    private DoSomething loadFile(String filePath, Message message){
+        try {
+            //Chargement de la classe à l'aide du ClassLoader
+            Class classe = classLoader.loadClass(filePath);
+            System.out.println("Class " + classe.getName()+ " was loaded successfully.");
+            Class[] cArg = new Class[2];
+            cArg[0] = int.class;
+            cArg[1] = int.class;
+            DoSomething object = (DoSomething) classe.getDeclaredConstructor(cArg).newInstance(message.number1, message.number2);
+            return object;
+        } catch (ClassNotFoundException | IllegalAccessException | InstantiationException | NoSuchMethodException | InvocationTargetException ex) {
+            System.out.println("Erreur: La classe " + filePath + " n'a pas été trouvée.");
+            return null;
+        }
+
     }
 
     public static void main(String[] args) throws IOException {
@@ -104,8 +183,6 @@ public class Server {
                 throw new IllegalArgumentException("Veuillez indiquer 1 argument");
             } else {
                 final Server server = new Server(new Integer(args[0]));
-
-
                 /** Création d'un thread qui vérifie si un signal d'interruption (par exemple Ctrl-C) a été soumis au programme
                  * Dans ce cas, fermeture du writer et du socket.
                  */
