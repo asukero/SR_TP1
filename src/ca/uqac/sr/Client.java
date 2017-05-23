@@ -1,13 +1,20 @@
 package ca.uqac.sr;
 
-import ca.uqac.sr.utils.Add;
 import ca.uqac.sr.utils.DoSomething;
 
 import javax.swing.*;
-import java.io.*;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
+import java.lang.reflect.InvocationTargetException;
 import java.net.InetAddress;
 import java.net.Socket;
-import java.nio.file.Path;
 
 /**
  * Created by lowgr on 5/21/2017.
@@ -18,6 +25,7 @@ public class Client {
     private OutputStream outServerStream;
     private InputStream inServerStream;
     private File fileToSend;
+    private Class objectClass;
 
     public Client(InetAddress inetAddress, int port) throws IOException {
         this.socket = new Socket(inetAddress, port);
@@ -36,11 +44,10 @@ public class Client {
             int number2 = Integer.parseInt(number2String);
 
 
-
             String returnMessage;
             switch (sendType) {
                 case OBJECT:
-                    sendMessage(new Message(sendType, number1, number2));
+                    sendMessage(new Message(sendType, number1, number2, objectClass.getName()));
                     returnMessage = sendObject(number1, number2);
                     break;
                 case BYTE:
@@ -59,7 +66,7 @@ public class Client {
             JOptionPane.showMessageDialog(null, returnMessage);
 
         } catch (IOException | ClassNotFoundException ex) {
-            System.out.println(ex.getMessage());
+            System.err.println(ex.getMessage());
         }
     }
 
@@ -76,18 +83,26 @@ public class Client {
         return rMessage;
     }
 
-    private String sendObject(int number1, int number2) throws IOException, ClassNotFoundException {
-        ObjectOutputStream outToServer = new ObjectOutputStream(outServerStream);
+    private String sendObject(int number1, int number2) {
+        try {
+            ObjectOutputStream outToServer = new ObjectOutputStream(outServerStream);
+            Class[] cArg = new Class[2];
+            cArg[0] = int.class;
+            cArg[1] = int.class;
+            DoSomething objectToSend = (DoSomething) objectClass.getDeclaredConstructor(cArg).newInstance(number1, number2);
 
-        DoSomething objectToSend = new Add(number1, number2);
+            System.out.println("Sending object " + objectToSend.getClass().getName() + " to server...");
+            outToServer.writeObject(objectToSend);
+            System.out.println("Done.");
 
-        System.out.println("Sending object " + objectToSend.getClass().getName() + " to server...");
-        outToServer.writeObject(objectToSend);
-        System.out.println("Done.");
+            String rMessage = getReturnMessage();
+            outToServer.flush();
+            return rMessage;
+        } catch (IOException | ClassNotFoundException | NoSuchMethodException | IllegalAccessException | InstantiationException | InvocationTargetException ex) {
+            return "Error: " + ex.getMessage() + "\n" +
+                    "The object has not been send.";
+        }
 
-        outToServer.flush();
-
-        return getReturnMessage();
 
     }
 
@@ -102,25 +117,35 @@ public class Client {
             dos.write(buffer);
         }
 
-        fis.close();
-        dos.close();
         System.out.println("Done.");
 
-        return getReturnMessage();
+        String rMessage = getReturnMessage();
+
+        fis.close();
+        dos.close();
+
+
+        return rMessage;
     }
 
     public static void main(String[] args) throws IOException, ClassNotFoundException {
 
-
+        Client client = null;
         try {
             // verification des arguments
-            if (args.length < 3 || args.length > 4) {
-                throw new IllegalArgumentException("Veuillez indiquer 3 ou 4 arguments");
+            if (args.length != 4) {
+                throw new IllegalArgumentException("Veuillez indiquer 4 arguments");
             } else {
-                Client client = new Client(InetAddress.getByName(args[0]), new Integer(args[1]));
+                client = new Client(InetAddress.getByName(args[0]), new Integer(args[1]));
                 switch (args[2]) {
                     case "-o":
                         client.sendType = SendType.OBJECT;
+                        if (!(args[3].equals("Add") || args[3].equals("Divide") || args[3].equals("Multiply") || args[3].equals("Substract"))) {
+                            throw new IllegalArgumentException("Argument incorrect " + args[3]);
+                        } else {
+                            client.objectClass = Class.forName("ca.uqac.sr.utils." + args[3]);
+                        }
+
                         break;
                     case "-s":
                         client.sendType = SendType.SOURCE;
@@ -144,9 +169,12 @@ public class Client {
                 client.socket.close();
             }
         } catch (Exception ex) {
+            if(client != null){
+                client.socket.close();
+            }
             System.out.println(ex.getMessage());
             System.out.println("Usage:\n" +
-                    "\tjava -jar Client.jar [hostname] [port number] -o\n" +
+                    "\tjava -jar Client.jar [hostname] [port number] -o [Add|Divide|Multiply|Substract]\n" +
                     "\tjava -jar Client.jar [hostname] [port number] -s [Source.java]\n" +
                     "\tjava -jar Client.jar [hostname] [port number] -b [Source.class]\n");
         }

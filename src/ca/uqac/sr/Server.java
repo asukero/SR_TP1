@@ -1,9 +1,6 @@
 package ca.uqac.sr;
 
 import ca.uqac.sr.utils.DoSomething;
-import com.sun.org.apache.bcel.internal.generic.TargetLostException;
-import sun.misc.IOUtils;
-import sun.nio.ch.IOUtil;
 
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
@@ -11,13 +8,18 @@ import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.lang.reflect.InvocationTargetException;
-import java.net.*;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
 
 
@@ -45,10 +47,17 @@ public class Server {
 
                     String rMessage = null;
                     DoSomething object = null;
+
+                    System.out.println("Message received from client:\n" +
+                                        "\tmessage type: " + message.sendType.toString() + "\n" +
+                                        "\tcompute: " + message.fileName + "\n" +
+                                        "\tnumber1: " + message.number1 + "\n" +
+                                        "\tnumber2: " + message.number2);
+
+
                     switch (message.sendType) {
                         case OBJECT:
                             object = readObject(socket);
-
                             break;
                         case SOURCE:
                             File fileReceived = readFile(socket, message);
@@ -65,12 +74,12 @@ public class Server {
                             break;
 
                     }
-                    if(object != null){
+                    if (object != null) {
                         object.compute();
-                        rMessage = "Compute sucess, result is " + object.getResult();
+                        rMessage = "Compute sucess ! The result is " + object.getResult() + "\n";
 
-                    }else{
-                        rMessage = "Error during compute";
+                    } else {
+                        rMessage = "Error during compute\n";
                     }
                     System.out.println(rMessage);
                     os.writeObject(rMessage);
@@ -99,11 +108,11 @@ public class Server {
         FileOutputStream fos = new FileOutputStream(message.fileName);
         byte[] buffer = new byte[4096];
 
-        int filesize = (int)message.fileSize; // Send file size in separate msg
+        int filesize = (int) message.fileSize; // Send file size in separate msg
         int read = 0;
         int totalRead = 0;
         int remaining = filesize;
-        while((read = dis.read(buffer, 0, Math.min(buffer.length, remaining))) > 0) {
+        while ((read = dis.read(buffer, 0, Math.min(buffer.length, remaining))) > 0) {
             totalRead += read;
             remaining -= read;
             System.out.println("read " + totalRead + " bytes.");
@@ -112,13 +121,13 @@ public class Server {
 
         File fileReceived = new File(message.fileName);
 
-        dis.close();
+        //dis.close();
 
         fos.close();
         return fileReceived;
     }
 
-    public void compileFile(File fileReceived){
+    public void compileFile(File fileReceived) {
         //Récupération du compilateur Java
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<JavaFileObject>();
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
@@ -157,11 +166,11 @@ public class Server {
         }
     }
 
-    private DoSomething loadFile(String filePath, Message message){
+    private DoSomething loadFile(String filePath, Message message) {
         try {
             //Chargement de la classe à l'aide du ClassLoader
             Class classe = classLoader.loadClass(filePath);
-            System.out.println("Class " + classe.getName()+ " was loaded successfully.");
+            System.out.println("Class " + classe.getName() + " was loaded successfully.");
             Class[] cArg = new Class[2];
             cArg[0] = int.class;
             cArg[1] = int.class;
@@ -186,17 +195,19 @@ public class Server {
                 /** Création d'un thread qui vérifie si un signal d'interruption (par exemple Ctrl-C) a été soumis au programme
                  * Dans ce cas, fermeture du writer et du socket.
                  */
-//                Runtime.getRuntime().addShutdownHook(new Thread() {
-//                    @Override
-//                    public void run() {
-//                        System.out.println("SERVEUR: interruption recue, fermeture du serveur...");
-//                        try {
-//                            server.listener.close();
-//                        } catch (IOException e) {
-//                            System.err.println("Erreur lors de la fermeture du socket");
-//                        }
-//                    }
-//                });
+
+                Runtime.getRuntime().addShutdownHook(new Thread() {
+                    @Override
+                    public void run() {
+                        System.out.println("SERVEUR: interruption recue, fermeture du serveur...");
+                        try {
+                            server.listener.close();
+                        } catch (IOException e) {
+                            System.err.println("Erreur lors de la fermeture du socket");
+                        }
+                    }
+                });
+
 
                 server.startServer();
 

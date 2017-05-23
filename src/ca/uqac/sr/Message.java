@@ -24,9 +24,10 @@ public class Message implements Serializable{
         this.fileName = fileName;
     }
 
-    public Message(SendType sendType, int number1, int number2) {
+    public Message(SendType sendType, int number1, int number2, String fileName) {
         this.sendType = sendType;
         this.number1 = number1;
         this.number2 = number2;
+        this.fileName = fileName;
     }
 }
